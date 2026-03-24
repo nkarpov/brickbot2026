@@ -75,13 +75,24 @@ async def deduplicate_input(
     raw_input = request.input if hasattr(request, "input") else request.get("input", [])
     messages = [i.model_dump() if hasattr(i, "model_dump") else i for i in raw_input]
     for msg in messages:
-        if (
-            isinstance(msg, dict)
-            and msg.get("type") == "message"
-            and msg.get("role") == "assistant"
-            and isinstance(msg.get("content"), str)
-        ):
-            msg["content"] = [{"type": "output_text", "text": msg["content"], "annotations": []}]
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = msg.get("content")
+        # Normalize assistant content: string → structured list (for Responses API)
+        if role == "assistant" and isinstance(content, str):
+            msg["content"] = [{"type": "output_text", "text": content, "annotations": []}]
+        # Normalize assistant content: structured list → string (for chat completions converter)
+        # The openai-agents SDK in chat_completions mode can't handle output_text dicts
+        elif role == "assistant" and isinstance(content, list):
+            texts = []
+            for c in content:
+                if isinstance(c, dict) and c.get("type") == "output_text":
+                    texts.append(c.get("text", ""))
+                elif isinstance(c, str):
+                    texts.append(c)
+            if texts:
+                msg["content"] = " ".join(texts)
     session_items = await session.get_items()
     if len(session_items) >= len(messages) - 1:
         return [messages[-1]]
