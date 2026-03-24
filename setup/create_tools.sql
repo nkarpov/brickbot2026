@@ -1,11 +1,13 @@
-CREATE SCHEMA IF NOT EXISTS brickbot2026.tools;
+-- Raw RainFocus API wrappers
+-- These are thin SQL functions that call the RainFocus HTTP connection.
+-- They live in brickbot2026.rainfocus schema.
 
-CREATE OR REPLACE FUNCTION brickbot2026.tools.search_sessions(
-  query STRING COMMENT 'Search query — topics, speaker names, technologies, or keywords'
+CREATE OR REPLACE FUNCTION brickbot2026.rainfocus.get_sessions(
+  query STRING COMMENT 'Not used yet — returns all sessions. Will support filtering in the future.'
 )
 RETURNS STRING
 LANGUAGE SQL
-COMMENT 'Search for DAIS 2026 conference sessions by topic, speaker name, technology, or keyword. Use when the user asks about sessions, talks, presentations, or speakers.'
+COMMENT 'Fetch conference sessions from the RainFocus API.'
 RETURN (
   SELECT http_request(
     conn => 'rainfocus',
@@ -15,12 +17,12 @@ RETURN (
   ).text
 );
 
-CREATE OR REPLACE FUNCTION brickbot2026.tools.search_exhibitors(
-  query STRING COMMENT 'Search query — company names, technologies, or keywords'
+CREATE OR REPLACE FUNCTION brickbot2026.rainfocus.get_exhibitors(
+  query STRING COMMENT 'Not used yet — returns all exhibitors. Will support filtering in the future.'
 )
 RETURNS STRING
 LANGUAGE SQL
-COMMENT 'Search for DAIS 2026 expo hall exhibitors by name or keyword. Use when the user asks about exhibitors, booths, sponsors, or the expo hall.'
+COMMENT 'Fetch exhibitors from the RainFocus API.'
 RETURN (
   SELECT http_request(
     conn => 'rainfocus',
@@ -30,10 +32,9 @@ RETURN (
   ).text
 );
 
-CREATE OR REPLACE FUNCTION brickbot2026.tools.get_current_time()
-RETURNS STRING
-LANGUAGE SQL
-COMMENT 'Get the current date and time in the conference timezone (US Pacific).'
-RETURN (
-  SELECT date_format(current_timestamp(), 'EEEE, MMMM dd, yyyy hh:mm a') || ' PT'
-);
+-- Brickbot-specific tools go in brickbot2026.tools schema.
+-- These will do actual work: search/filter/format, schedule writes, etc.
+-- TODO: search_sessions (Python UC function that calls rainfocus.get_sessions + filters/ranks)
+-- TODO: search_exhibitors (same pattern)
+-- TODO: add_session (calls RainFocus POST /addSession)
+-- TODO: get_attendee_schedule (calls RainFocus GET /mySchedule)

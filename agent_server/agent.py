@@ -78,17 +78,18 @@ Guidelines:
 - When sharing session results, format them clearly with title, speakers, date/time, and location
 - If you don't know something, say so — don't make up information
 - Stay on topic — only answer questions related to DAIS 2026
-- Use the search_sessions tool when users ask about sessions, speakers, or topics
-- Use the search_exhibitors tool when users ask about exhibitors, booths, or the expo hall
-- The search tools return raw JSON from the conference API — parse and format the results for the user
+- Use the get_sessions tool when users ask about sessions, speakers, or topics
+- Use the get_exhibitors tool when users ask about exhibitors, booths, or the expo hall
+- The tools return raw JSON from the conference API — parse and present the most relevant results clearly
+- The session data can be large — focus on extracting and formatting just the matches relevant to the user's query
 """
 
 
 async def init_mcp_server():
-    """Initialize MCP server pointing at our UC functions in brickbot2026.tools."""
+    """Initialize MCP server pointing at UC functions in brickbot2026.rainfocus."""
     return McpServer(
-        url=f"{_databricks_host}/api/2.0/mcp/functions/brickbot2026/tools",
-        name="brickbot-tools",
+        url=f"{_databricks_host}/api/2.0/mcp/functions/brickbot2026/rainfocus",
+        name="rainfocus-tools",
         workspace_client=WorkspaceClient(),
     )
 
