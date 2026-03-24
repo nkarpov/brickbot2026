@@ -31,6 +31,26 @@ resources:
             experiment_id: ""
             permission: "CAN_MANAGE"
 
+  jobs:
+    rainfocus_data_refresh:
+      name: "brickbot-rainfocus-refresh"
+      description: "Refresh session and exhibitor data from RainFocus API every 15 minutes"
+      schedule:
+        quartz_cron_expression: "0 */15 * * * ?"
+        timezone_id: "America/Los_Angeles"
+        pause_status: "UNPAUSED"
+      tasks:
+        - task_key: refresh_sessions
+          sql_task:
+            file:
+              path: ./resources/jobs/refresh_sessions.sql
+            warehouse_id: c02046f2c3702009
+        - task_key: refresh_exhibitors
+          sql_task:
+            file:
+              path: ./resources/jobs/refresh_exhibitors.sql
+            warehouse_id: c02046f2c3702009
+
 targets:
   dev:
     mode: development

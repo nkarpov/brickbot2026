@@ -86,10 +86,10 @@ Guidelines:
 
 
 async def init_mcp_server():
-    """Initialize MCP server pointing at UC functions in brickbot2026.rainfocus."""
+    """Initialize MCP server pointing at UC functions in brickbot2026.tools."""
     return McpServer(
-        url=f"{_databricks_host}/api/2.0/mcp/functions/brickbot2026/rainfocus",
-        name="rainfocus-tools",
+        url=f"{_databricks_host}/api/2.0/mcp/functions/brickbot2026/tools",
+        name="brickbot-tools",
         workspace_client=WorkspaceClient(),
     )
 
