@@ -110,7 +110,14 @@ def search_sessions(query: str) -> str:
             path="entityDataDump/session",
             headers={"Accept": "application/json"},
         )
-        data = resp.json() if hasattr(resp, "json") else json.loads(resp.text)
+        # resp is ExternalFunctionResponse — .text contains the body as string
+        body = resp.text if hasattr(resp, "text") else str(resp)
+        if isinstance(body, str):
+            data = json.loads(body)
+        elif isinstance(body, dict):
+            data = body
+        else:
+            data = json.loads(str(body))
         sessions = data.get("data", [])
 
         # Filter to accepted, published sessions
