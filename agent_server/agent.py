@@ -37,22 +37,28 @@ LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or None
 
 _has_autoscaling = LAKEBASE_AUTOSCALING_PROJECT and LAKEBASE_AUTOSCALING_BRANCH
 
-# Resolve instance name from PGHOST if available (app resource dependency injects this)
-if _PGHOST:
-    LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_PGHOST)
-    logger.info(f"Lakebase: using PGHOST -> instance_name={LAKEBASE_INSTANCE_NAME}")
+# Prefer autoscaling project/branch when available, fall back to instance name
+if _has_autoscaling:
+    LAKEBASE_INSTANCE_NAME = None
+    logger.info(f"Lakebase: using autoscaling project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
 elif _LAKEBASE_INSTANCE_NAME_RAW:
     LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW)
     logger.info(f"Lakebase: using LAKEBASE_INSTANCE_NAME={LAKEBASE_INSTANCE_NAME}")
-elif _has_autoscaling:
-    LAKEBASE_INSTANCE_NAME = None
-    logger.info(f"Lakebase: using autoscaling project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
+elif _PGHOST:
+    # PGHOST injected by app resource dependency — try to resolve to instance name
+    try:
+        LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_PGHOST)
+        logger.info(f"Lakebase: using PGHOST -> instance_name={LAKEBASE_INSTANCE_NAME}")
+    except ValueError:
+        # Can't resolve — use hostname directly as instance_name
+        LAKEBASE_INSTANCE_NAME = _PGHOST
+        logger.info(f"Lakebase: using PGHOST directly as instance_name={_PGHOST}")
 else:
     raise ValueError(
         "Lakebase configuration is required. Set one of:\n"
-        "  PGHOST (from app resource dependency)\n"
+        "  LAKEBASE_AUTOSCALING_PROJECT + LAKEBASE_AUTOSCALING_BRANCH\n"
         "  LAKEBASE_INSTANCE_NAME=<name>\n"
-        "  LAKEBASE_AUTOSCALING_PROJECT=<project> and LAKEBASE_AUTOSCALING_BRANCH=<branch>\n"
+        "  PGHOST (from app resource dependency)\n"
     )
 
 # OpenAI Agents SDK setup for Databricks
