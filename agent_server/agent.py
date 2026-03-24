@@ -29,23 +29,31 @@ from agent_server.utils import (
 logger = logging.getLogger(__name__)
 
 # Lakebase configuration
+# Priority: PGHOST (injected by app resource dependency) > LAKEBASE_INSTANCE_NAME > autoscaling project/branch
+_PGHOST = os.environ.get("PGHOST") or None
 _LAKEBASE_INSTANCE_NAME_RAW = os.environ.get("LAKEBASE_INSTANCE_NAME") or None
 LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or None
 LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or None
 
 _has_autoscaling = LAKEBASE_AUTOSCALING_PROJECT and LAKEBASE_AUTOSCALING_BRANCH
-if not _LAKEBASE_INSTANCE_NAME_RAW and not _has_autoscaling:
+
+# Resolve instance name from PGHOST if available (app resource dependency injects this)
+if _PGHOST:
+    LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_PGHOST)
+    logger.info(f"Lakebase: using PGHOST -> instance_name={LAKEBASE_INSTANCE_NAME}")
+elif _LAKEBASE_INSTANCE_NAME_RAW:
+    LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW)
+    logger.info(f"Lakebase: using LAKEBASE_INSTANCE_NAME={LAKEBASE_INSTANCE_NAME}")
+elif _has_autoscaling:
+    LAKEBASE_INSTANCE_NAME = None
+    logger.info(f"Lakebase: using autoscaling project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
+else:
     raise ValueError(
         "Lakebase configuration is required. Set one of:\n"
+        "  PGHOST (from app resource dependency)\n"
         "  LAKEBASE_INSTANCE_NAME=<name>\n"
         "  LAKEBASE_AUTOSCALING_PROJECT=<project> and LAKEBASE_AUTOSCALING_BRANCH=<branch>\n"
     )
-
-LAKEBASE_INSTANCE_NAME = (
-    resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW)
-    if _LAKEBASE_INSTANCE_NAME_RAW
-    else None
-)
 
 # OpenAI Agents SDK setup for Databricks
 set_default_openai_client(AsyncDatabricksOpenAI())
