@@ -29,37 +29,31 @@ from agent_server.utils import (
 logger = logging.getLogger(__name__)
 
 # Lakebase configuration
-# Priority: PGHOST (injected by app resource dependency) > LAKEBASE_INSTANCE_NAME > autoscaling project/branch
-_PGHOST = os.environ.get("PGHOST") or None
+# When PGHOST is injected by the app resource dependency, prefer it over explicit project/branch
+# since the resource dependency handles auth. Passing project/branch causes the SDK to resolve
+# its own endpoint which may differ from what the SP is authorized for.
+_has_pghost = bool(os.environ.get("PGHOST"))
 _LAKEBASE_INSTANCE_NAME_RAW = os.environ.get("LAKEBASE_INSTANCE_NAME") or None
-LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or None
-LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or None
 
-_has_autoscaling = LAKEBASE_AUTOSCALING_PROJECT and LAKEBASE_AUTOSCALING_BRANCH
-
-# Prefer autoscaling project/branch when available, fall back to instance name
-if _has_autoscaling:
+if _has_pghost:
+    # App resource dependency injects PG* vars with proper auth — don't override with project/branch
     LAKEBASE_INSTANCE_NAME = None
-    logger.info(f"Lakebase: using autoscaling project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
+    LAKEBASE_AUTOSCALING_PROJECT = None
+    LAKEBASE_AUTOSCALING_BRANCH = None
+    logger.info(f"Lakebase: using PGHOST={os.environ['PGHOST']} (app resource dependency)")
 elif _LAKEBASE_INSTANCE_NAME_RAW:
     LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW)
-    logger.info(f"Lakebase: using LAKEBASE_INSTANCE_NAME={LAKEBASE_INSTANCE_NAME}")
-elif _PGHOST:
-    # PGHOST injected by app resource dependency — try to resolve to instance name
-    try:
-        LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_PGHOST)
-        logger.info(f"Lakebase: using PGHOST -> instance_name={LAKEBASE_INSTANCE_NAME}")
-    except ValueError:
-        # Can't resolve — use hostname directly as instance_name
-        LAKEBASE_INSTANCE_NAME = _PGHOST
-        logger.info(f"Lakebase: using PGHOST directly as instance_name={_PGHOST}")
+    LAKEBASE_AUTOSCALING_PROJECT = None
+    LAKEBASE_AUTOSCALING_BRANCH = None
+    logger.info(f"Lakebase: instance_name={LAKEBASE_INSTANCE_NAME}")
 else:
-    raise ValueError(
-        "Lakebase configuration is required. Set one of:\n"
-        "  LAKEBASE_AUTOSCALING_PROJECT + LAKEBASE_AUTOSCALING_BRANCH\n"
-        "  LAKEBASE_INSTANCE_NAME=<name>\n"
-        "  PGHOST (from app resource dependency)\n"
-    )
+    LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or None
+    LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or None
+    LAKEBASE_INSTANCE_NAME = None
+    if LAKEBASE_AUTOSCALING_PROJECT and LAKEBASE_AUTOSCALING_BRANCH:
+        logger.info(f"Lakebase: autoscaling project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
+    else:
+        raise ValueError("Lakebase configuration is required: PGHOST, LAKEBASE_INSTANCE_NAME, or LAKEBASE_AUTOSCALING_PROJECT+BRANCH")
 
 # OpenAI Agents SDK setup for Databricks
 set_default_openai_client(AsyncDatabricksOpenAI())

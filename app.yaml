@@ -9,11 +9,3 @@ env:
     value: "http://localhost:8000/invocations"
   - name: CHAT_PROXY_TIMEOUT_SECONDS
     value: "300"
-  - name: LAKEBASE_AUTOSCALING_PROJECT
-    value: "brickbot"
-  - name: LAKEBASE_AUTOSCALING_BRANCH
-    value: "main"
-  - name: PGHOST
-    value: "ep-spring-cake-d1ybsm25.database.us-west-2.cloud.databricks.com"
-  - name: PGDATABASE
-    value: "databricks_postgres"
