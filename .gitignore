@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+*.egg-info/
+dist/
+build/
+backend.log
+frontend.log
+e2e-chatbot-app-next/
+.databricks/
