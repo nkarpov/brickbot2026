@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from datetime import datetime
@@ -7,11 +6,11 @@ from zoneinfo import ZoneInfo
 
 import litellm
 import mlflow
-from agents import Agent, Runner, function_tool, set_default_openai_api, set_default_openai_client
+from agents import Agent, Runner, set_default_openai_api, set_default_openai_client
 from agents.tracing import set_trace_processors
 from databricks.sdk import WorkspaceClient
 from databricks_openai import AsyncDatabricksOpenAI
-from databricks_openai.agents import AsyncDatabricksSession
+from databricks_openai.agents import AsyncDatabricksSession, McpServer
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -29,15 +28,10 @@ from agent_server.utils import (
 logger = logging.getLogger(__name__)
 
 # Lakebase configuration
-# When PGHOST is injected by the app resource dependency, prefer it over explicit project/branch
-# since the resource dependency handles auth. Passing project/branch causes the SDK to resolve
-# its own endpoint which may differ from what the SP is authorized for.
 _has_pghost = bool(os.environ.get("PGHOST"))
 _LAKEBASE_INSTANCE_NAME_RAW = os.environ.get("LAKEBASE_INSTANCE_NAME") or None
 
 if _has_pghost:
-    # App resource dependency injects PG* vars with proper auth
-    # Still need to pass project/branch to AsyncDatabricksSession — use what's in env or default
     LAKEBASE_INSTANCE_NAME = None
     LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or "brickbot"
     LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or "production"
@@ -64,8 +58,8 @@ mlflow.openai.autolog()
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 litellm.suppress_debug_info = True
 
-# Workspace client for UC function calls
-_ws = WorkspaceClient()
+# Databricks host for MCP endpoint
+_databricks_host = WorkspaceClient().config.host
 
 SYSTEM_PROMPT = """\
 You are Brickbot, the virtual assistant for the Data + AI Summit 2026 (DAIS 2026).
@@ -85,118 +79,21 @@ Guidelines:
 - If you don't know something, say so — don't make up information
 - Stay on topic — only answer questions related to DAIS 2026
 - Use the search_sessions tool when users ask about sessions, speakers, or topics
+- Use the search_exhibitors tool when users ask about exhibitors, booths, or the expo hall
+- The search tools return raw JSON from the conference API — parse and format the results for the user
 """
 
 
-@function_tool
-def get_current_time() -> str:
-    """Get the current date and time in the conference timezone (America/Los_Angeles)."""
-    return datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%A, %B %d, %Y %I:%M %p PT")
+async def init_mcp_server():
+    """Initialize MCP server pointing at our UC functions in brickbot2026.tools."""
+    return McpServer(
+        url=f"{_databricks_host}/api/2.0/mcp/functions/brickbot2026/tools",
+        name="brickbot-tools",
+        workspace_client=WorkspaceClient(),
+    )
 
 
-@function_tool
-def search_sessions(query: str) -> str:
-    """Search for conference sessions by topic, speaker name, technology, or keyword.
-
-    Use this tool when the user asks about sessions, talks, presentations, or speakers.
-
-    Args:
-        query: The search query — topics, speaker names, technologies, or keywords.
-    """
-    try:
-        resp = _ws.serving_endpoints.http_request(
-            conn="rainfocus",
-            method="GET",
-            path="entityDataDump/session",
-            headers={"Accept": "application/json"},
-        )
-        # resp is ExternalFunctionResponse — .text contains the body as string
-        body = resp.text if hasattr(resp, "text") else str(resp)
-        if isinstance(body, str):
-            data = json.loads(body)
-        elif isinstance(body, dict):
-            data = body
-        else:
-            data = json.loads(str(body))
-        sessions = data.get("data", [])
-
-        # Filter to accepted, published sessions
-        query_lower = query.lower()
-        query_terms = query_lower.split()
-
-        results = []
-        for session in sessions:
-            if session.get("status") != "Accepted" or not session.get("published"):
-                continue
-
-            title = (session.get("title") or "").lower()
-            abstract = (session.get("abstract") or "").lower()
-            speakers = ", ".join(
-                p.get("fullName", "") for p in session.get("participants", []) if isinstance(p, dict)
-            ).lower()
-
-            score = 0
-            for term in query_terms:
-                if term in title:
-                    score += 3
-                if term in speakers:
-                    score += 3
-                if term in abstract:
-                    score += 1
-
-            if score > 0:
-                times = session.get("times", [])
-                time_info = ""
-                room = ""
-                if times:
-                    t = times[0]
-                    time_info = f"{t.get('dayDisplayName', '')} {t.get('startTime', '')}".strip()
-                    room = t.get("room", "")
-
-                attrs = {
-                    a["attribute"]: a["value"]
-                    for a in session.get("attributeValues", [])
-                    if isinstance(a, dict)
-                }
-
-                results.append((score, {
-                    "title": session.get("title", "N/A"),
-                    "speakers": ", ".join(
-                        p.get("fullName", "")
-                        for p in session.get("participants", [])
-                        if isinstance(p, dict)
-                    ) or "N/A",
-                    "date_time": time_info or "TBD",
-                    "location": room or "TBD",
-                    "track": attrs.get("Session Track", "N/A"),
-                    "type": attrs.get("Session Type", "N/A"),
-                    "abstract": (session.get("abstract") or "")[:300],
-                    "sessionId": session.get("sessionId"),
-                }))
-
-        results.sort(key=lambda x: x[0], reverse=True)
-        top = [r[1] for r in results[:5]]
-
-        if not top:
-            return "No sessions found matching your query. Try different keywords or speaker names."
-
-        formatted = []
-        for s in top:
-            formatted.append(
-                f"**{s['title']}**\n"
-                f"  Speakers: {s['speakers']}\n"
-                f"  Track: {s['track']} | Type: {s['type']}\n"
-                f"  When: {s['date_time']} | Where: {s['location']}\n"
-                f"  {s['abstract']}"
-            )
-        return "\n\n".join(formatted)
-
-    except Exception as e:
-        logger.error(f"Error searching sessions: {e}")
-        return f"Error searching for sessions: {str(e)}"
-
-
-def create_agent() -> Agent:
+def create_agent(mcp_servers=None) -> Agent:
     dt = datetime.now(ZoneInfo("America/Los_Angeles")).strftime(
         "%A, %B %d, %Y %I:%M %p PT"
     )
@@ -204,7 +101,8 @@ def create_agent() -> Agent:
         name="Brickbot",
         instructions=SYSTEM_PROMPT.format(dt=dt),
         model="databricks-gpt-5-2",
-        tools=[get_current_time, search_sessions],
+        tools=[],
+        mcp_servers=mcp_servers or [],
     )
 
 
@@ -221,9 +119,17 @@ async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentRespon
         branch=LAKEBASE_AUTOSCALING_BRANCH,
     )
 
-    agent = create_agent()
-    messages = await deduplicate_input(request, session)
-    result = await Runner.run(agent, messages, session=session)
+    try:
+        async with await init_mcp_server() as mcp_server:
+            agent = create_agent(mcp_servers=[mcp_server])
+            messages = await deduplicate_input(request, session)
+            result = await Runner.run(agent, messages, session=session)
+    except Exception:
+        logger.warning("MCP server unavailable, running without tools.", exc_info=True)
+        agent = create_agent()
+        messages = await deduplicate_input(request, session)
+        result = await Runner.run(agent, messages, session=session)
+
     return ResponsesAgentResponse(
         output=[item.to_input_item() for item in result.new_items],
         custom_outputs={"session_id": session.session_id},
@@ -245,9 +151,17 @@ async def stream_handler(
         branch=LAKEBASE_AUTOSCALING_BRANCH,
     )
 
-    agent = create_agent()
-    messages = await deduplicate_input(request, session)
-    result = Runner.run_streamed(agent, input=messages, session=session)
-
-    async for event in process_agent_stream_events(result.stream_events()):
-        yield event
+    try:
+        async with await init_mcp_server() as mcp_server:
+            agent = create_agent(mcp_servers=[mcp_server])
+            messages = await deduplicate_input(request, session)
+            result = Runner.run_streamed(agent, input=messages, session=session)
+            async for event in process_agent_stream_events(result.stream_events()):
+                yield event
+    except Exception:
+        logger.warning("MCP server unavailable, running without tools.", exc_info=True)
+        agent = create_agent()
+        messages = await deduplicate_input(request, session)
+        result = Runner.run_streamed(agent, input=messages, session=session)
+        async for event in process_agent_stream_events(result.stream_events()):
+            yield event
