@@ -1,8 +1,7 @@
 -- Refresh sessions Delta table from RainFocus API
 -- Runs every 15 minutes via scheduled job
 
-CREATE OR REPLACE TABLE brickbot2026.rainfocus.sessions
-TBLPROPERTIES (delta.enableChangeDataFeed = true) AS
+INSERT OVERWRITE brickbot2026.rainfocus.sessions
 WITH raw AS (
   SELECT from_json(
     brickbot2026.rainfocus.get_sessions(''),
