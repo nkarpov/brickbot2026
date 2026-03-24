@@ -8,7 +8,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 
 import agent_server.agent  # noqa: E402, F401
 
-agent_server = AgentServer("Brickbot", enable_chat_proxy=True)
+agent_server = AgentServer("Brickbot", enable_chat_proxy=False)
 app = agent_server.app
 
 try:
