@@ -36,11 +36,12 @@ _has_pghost = bool(os.environ.get("PGHOST"))
 _LAKEBASE_INSTANCE_NAME_RAW = os.environ.get("LAKEBASE_INSTANCE_NAME") or None
 
 if _has_pghost:
-    # App resource dependency injects PG* vars with proper auth — don't override with project/branch
+    # App resource dependency injects PG* vars with proper auth
+    # Still need to pass project/branch to AsyncDatabricksSession — use what's in env or default
     LAKEBASE_INSTANCE_NAME = None
-    LAKEBASE_AUTOSCALING_PROJECT = None
-    LAKEBASE_AUTOSCALING_BRANCH = None
-    logger.info(f"Lakebase: using PGHOST={os.environ['PGHOST']} (app resource dependency)")
+    LAKEBASE_AUTOSCALING_PROJECT = os.getenv("LAKEBASE_AUTOSCALING_PROJECT") or "brickbot"
+    LAKEBASE_AUTOSCALING_BRANCH = os.getenv("LAKEBASE_AUTOSCALING_BRANCH") or "production"
+    logger.info(f"Lakebase: PGHOST={os.environ['PGHOST']} project={LAKEBASE_AUTOSCALING_PROJECT} branch={LAKEBASE_AUTOSCALING_BRANCH}")
 elif _LAKEBASE_INSTANCE_NAME_RAW:
     LAKEBASE_INSTANCE_NAME = resolve_lakebase_instance_name(_LAKEBASE_INSTANCE_NAME_RAW)
     LAKEBASE_AUTOSCALING_PROJECT = None
