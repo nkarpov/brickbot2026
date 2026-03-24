@@ -1,36 +1,10 @@
 bundle:
   name: brickbot2026
 
+  # App is managed via GitHub integration, not DABs
+  # See app.yaml for app config
+
 resources:
-  apps:
-    brickbot:
-      name: "brickbot2026"
-      description: "Brickbot - DAIS 2026 conference assistant"
-      source_code_path: ./
-      config:
-        command: ["uv", "run", "start-app"]
-        env:
-          - name: MLFLOW_TRACKING_URI
-            value: "databricks"
-          - name: MLFLOW_REGISTRY_URI
-            value: "databricks-uc"
-          - name: API_PROXY
-            value: "http://localhost:8000/invocations"
-          - name: CHAT_PROXY_TIMEOUT_SECONDS
-            value: "300"
-          - name: MLFLOW_EXPERIMENT_ID
-            value_from: "experiment"
-          - name: LAKEBASE_AUTOSCALING_PROJECT
-            value: "brickbot"
-          - name: LAKEBASE_AUTOSCALING_BRANCH
-            value: "main"
-
-      resources:
-        - name: "experiment"
-          experiment:
-            experiment_id: ""
-            permission: "CAN_MANAGE"
-
   jobs:
     rainfocus_data_refresh:
       name: "brickbot-rainfocus-refresh"
