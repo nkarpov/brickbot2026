@@ -13,3 +13,7 @@ env:
     value: "brickbot"
   - name: LAKEBASE_AUTOSCALING_BRANCH
     value: "main"
+  - name: PGHOST
+    value: "ep-spring-cake-d1ybsm25.database.us-west-2.cloud.databricks.com"
+  - name: PGDATABASE
+    value: "databricks_postgres"
