@@ -10,15 +10,15 @@ from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentStreamEv
 from uuid_utils import uuid7
 
 
-def get_session_id(request: ResponsesAgentRequest) -> str:
+def get_session_id(request) -> str:
     """Extract session_id from request or generate a new one."""
-    ci = dict(request.custom_inputs or {})
-
-    if "session_id" in ci and ci["session_id"]:
+    ci = getattr(request, "custom_inputs", None) or (request.get("custom_inputs") if isinstance(request, dict) else None) or {}
+    if isinstance(ci, dict) and ci.get("session_id"):
         return str(ci["session_id"])
 
-    if request.context and getattr(request.context, "conversation_id", None):
-        return str(request.context.conversation_id)
+    ctx = getattr(request, "context", None) or (request.get("context") if isinstance(request, dict) else None)
+    if ctx and getattr(ctx, "conversation_id", None):
+        return str(ctx.conversation_id)
 
     return str(uuid7())
 
@@ -70,9 +70,10 @@ def get_user_workspace_client() -> WorkspaceClient:
 
 
 async def deduplicate_input(
-    request: ResponsesAgentRequest, session: AsyncDatabricksSession
+    request, session: AsyncDatabricksSession
 ) -> list[dict]:
-    messages = [i.model_dump() for i in request.input]
+    raw_input = request.input if hasattr(request, "input") else request.get("input", [])
+    messages = [i.model_dump() if hasattr(i, "model_dump") else i for i in raw_input]
     for msg in messages:
         if (
             isinstance(msg, dict)
