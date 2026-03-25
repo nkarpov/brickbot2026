@@ -1,8 +1,9 @@
 bundle:
   name: brickbot2026
 
-  # App is managed via GitHub integration, not DABs
-  # See app.yaml for app config
+  # The Databricks App is managed separately via native GitHub integration.
+  # This bundle only manages shared backend resources like refresh jobs.
+  # See app.yaml + agent_bricks/SETUP.md for the app-side contract.
 
 resources:
   jobs:

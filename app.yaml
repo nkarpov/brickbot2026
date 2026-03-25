@@ -5,7 +5,23 @@ env:
     value: "databricks"
   - name: MLFLOW_REGISTRY_URI
     value: "databricks-uc"
+  - name: MLFLOW_EXPERIMENT_ID
+    valueFrom: experiment
+  - name: BRICKBOT_BACKEND_VARIANT
+    value: "agent-bricks"
+  - name: LAKEBASE_AUTOSCALING_PROJECT
+    value: "brickbot"
+  - name: LAKEBASE_AUTOSCALING_BRANCH
+    value: "agent-bricks"
+  - name: BRICKBOT_BOOTSTRAP_KA
+    value: "true"
+  - name: KA_CONTENT_VOLUME_PATH
+    value: "/Volumes/brickbot2026/content/faq"
   - name: API_PROXY
     value: "http://localhost:8001/invocations"
   - name: CHAT_PROXY_TIMEOUT_SECONDS
     value: "300"
+  - name: LOG_SSE_EVENTS
+    value: "true"
+  - name: SUPERVISOR_ENDPOINT_NAME
+    value: "mas-24e1fc96-endpoint"

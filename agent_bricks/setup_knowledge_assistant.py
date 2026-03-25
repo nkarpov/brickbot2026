@@ -11,15 +11,22 @@ Run this once to set up the KA before creating the Supervisor Agent via UI.
 
 import os
 import logging
+
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.knowledgeassistants import (
-    KnowledgeAssistant,
-    KnowledgeSource,
-    FilesSpec,
-)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+try:
+    from databricks.sdk.service.knowledgeassistants import (
+        FilesSpec,
+        KnowledgeAssistant,
+        KnowledgeSource,
+    )
+except ImportError:  # pragma: no cover - depends on deploy image SDK version
+    FilesSpec = None
+    KnowledgeAssistant = None
+    KnowledgeSource = None
 
 # Configuration
 KA_NAME = "brickbot-knowledge-assistant"
@@ -44,12 +51,25 @@ Guidelines:
 """
 
 # Volume path for static content (must be created and populated separately)
-CONTENT_VOLUME_PATH = "/Volumes/brickbot2026/content/faq"
+CONTENT_VOLUME_PATH = os.environ.get(
+    "KA_CONTENT_VOLUME_PATH",
+    "/Volumes/brickbot2026/content/faq",
+)
+AUTO_SYNC_SOURCES = os.environ.get("KA_AUTO_SYNC_SOURCES", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 def create_knowledge_assistant(w: WorkspaceClient) -> str:
     """Create the Knowledge Assistant and return its name."""
-    
+    if KnowledgeAssistant is None:
+        raise RuntimeError(
+            "This environment's databricks-sdk does not include Knowledge Assistants. "
+            "Upgrade databricks-sdk in deployment or create the Knowledge Assistant manually in the UI."
+        )
+
     logger.info("Creating Knowledge Assistant...")
     
     # Create the KA
@@ -71,7 +91,11 @@ def create_knowledge_assistant(w: WorkspaceClient) -> str:
 
 def add_knowledge_source(w: WorkspaceClient, ka_name: str, volume_path: str) -> None:
     """Add a knowledge source (UC volume) to the Knowledge Assistant."""
-    
+    if KnowledgeSource is None or FilesSpec is None:
+        raise RuntimeError(
+            "Knowledge Assistant SDK types are unavailable in this environment."
+        )
+
     logger.info(f"Adding knowledge source from {volume_path}...")
     
     source = KnowledgeSource(
@@ -87,17 +111,54 @@ def add_knowledge_source(w: WorkspaceClient, ka_name: str, volume_path: str) -> 
     )
     
     logger.info(f"Added knowledge source: {created.name}")
-    logger.info("Note: Sync will happen automatically. Check status in UI.")
+    if AUTO_SYNC_SOURCES:
+        logger.info("Syncing knowledge sources...")
+        w.knowledge_assistants.sync_knowledge_sources(name=ka_name)
+        logger.info("Knowledge source sync requested.")
+
+
+def ensure_knowledge_source(w: WorkspaceClient, ka_name: str, volume_path: str) -> None:
+    """Ensure the expected files source exists for the Knowledge Assistant."""
+    try:
+        existing_sources = list(w.knowledge_assistants.list_knowledge_sources(parent=ka_name))
+    except Exception as exc:
+        logger.warning(f"Could not list knowledge sources: {exc}")
+        existing_sources = []
+
+    for source in existing_sources:
+        if source.source_type == "files" and source.files and source.files.path == volume_path:
+            logger.info(
+                "Knowledge source for %s already exists: %s",
+                volume_path,
+                source.name,
+            )
+            return
+
+    add_knowledge_source(w, ka_name, volume_path)
+
+
+def get_workspace_client() -> WorkspaceClient:
+    profile = os.environ.get("DATABRICKS_PROFILE")
+    if profile:
+        logger.info(f"Using Databricks profile: {profile}")
+        return WorkspaceClient(profile=profile)
+    logger.info("Using ambient Databricks auth from environment.")
+    return WorkspaceClient()
 
 
 def main():
     """Main entry point."""
-    
-    # Initialize client (uses environment or .databrickscfg)
-    profile = os.environ.get("DATABRICKS_PROFILE", "brickbot")
-    logger.info(f"Using Databricks profile: {profile}")
-    
-    w = WorkspaceClient(profile=profile)
+    w = get_workspace_client()
+
+    if KnowledgeAssistant is None:
+        logger.error(
+            "databricks-sdk in this environment does not expose Knowledge Assistants."
+        )
+        logger.error(
+            "Next step: update the deployment image to use a newer databricks-sdk, "
+            "or create the Knowledge Assistant manually in the Databricks UI."
+        )
+        return None
     
     # Check if KA already exists
     try:
@@ -106,6 +167,7 @@ def main():
             if ka.display_name == KA_NAME:
                 logger.info(f"Knowledge Assistant '{KA_NAME}' already exists: {ka.name}")
                 logger.info(f"Endpoint: {ka.endpoint_name}")
+                ensure_knowledge_source(w, ka.name, CONTENT_VOLUME_PATH)
                 return ka.name
     except Exception as e:
         logger.warning(f"Could not list existing KAs: {e}")
@@ -115,7 +177,7 @@ def main():
     
     # Add knowledge source (if volume exists)
     try:
-        add_knowledge_source(w, ka_name, CONTENT_VOLUME_PATH)
+        ensure_knowledge_source(w, ka_name, CONTENT_VOLUME_PATH)
     except Exception as e:
         logger.warning(f"Could not add knowledge source: {e}")
         logger.info("You can add knowledge sources manually via the UI.")

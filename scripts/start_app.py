@@ -24,6 +24,11 @@ FRONTEND_READY = [r"Server is running on http://localhost"]
 
 BACKEND_PORT = 8001
 FRONTEND_PORT = int(os.environ.get("PORT", "8000"))
+BACKEND_VARIANT = os.environ.get("BRICKBOT_BACKEND_VARIANT", "openai-sdk")
+BACKEND_COMMANDS = {
+    "openai-sdk": "start-server",
+    "agent-bricks": "start-server-agent-bricks",
+}
 
 
 def check_port_available(port: int) -> bool:
@@ -129,11 +134,17 @@ class ProcessManager:
 
         try:
             # Start backend on internal port
-            backend_cmd = ["uv", "run", "start-server", "--port", str(BACKEND_PORT)]
+            backend_script = BACKEND_COMMANDS.get(BACKEND_VARIANT)
+            if not backend_script:
+                valid = ", ".join(sorted(BACKEND_COMMANDS))
+                print(f"ERROR: Unknown BRICKBOT_BACKEND_VARIANT={BACKEND_VARIANT!r}. Expected one of: {valid}")
+                return 1
+
+            backend_cmd = ["uv", "run", backend_script, "--port", str(BACKEND_PORT)]
             if backend_args:
                 backend_cmd.extend(backend_args)
 
-            print(f"Starting backend on :{BACKEND_PORT}...")
+            print(f"Starting {BACKEND_VARIANT} backend on :{BACKEND_PORT}...")
             self.backend_process = subprocess.Popen(
                 backend_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
             )

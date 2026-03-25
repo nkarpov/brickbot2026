@@ -46,7 +46,7 @@ class BenchmarkRunner:
     def __init__(self, profile: str = "brickbot"):
         self.w = WorkspaceClient(profile=profile)
         self.host = self.w.config.host
-        self.token = self.w.config.token
+        self.auth_headers = self.w.config.authenticate()
         
         # Endpoint names
         self.openai_sdk_endpoint = os.environ.get(
@@ -71,7 +71,7 @@ class BenchmarkRunner:
         url = f"{self.host}/serving-endpoints/{endpoint}/invocations"
         
         headers = {
-            "Authorization": f"Bearer {self.token}",
+            **self.auth_headers,
             "Content-Type": "application/json",
         }
         
