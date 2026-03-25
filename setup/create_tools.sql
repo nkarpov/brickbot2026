@@ -32,6 +32,21 @@ RETURN (
   ).text
 );
 
+CREATE OR REPLACE FUNCTION brickbot2026.rainfocus.get_speakers(
+  query STRING COMMENT 'Not used — returns all speakers.'
+)
+RETURNS STRING
+LANGUAGE SQL
+COMMENT 'Fetch all speakers from the RainFocus API.'
+RETURN (
+  SELECT http_request(
+    conn => 'rainfocus',
+    method => 'GET',
+    path => 'entityDataDump/speaker?pageSize=100000',
+    headers => map('Accept', 'application/json')
+  ).text
+);
+
 -- Brickbot search tools (brickbot2026.tools schema)
 -- These use Vector Search HYBRID (BM25 + semantic) on the Delta tables.
 -- Exposed to the agent via MCP.
@@ -45,6 +60,21 @@ COMMENT 'Search for DAIS 2026 conference sessions by topic, speaker, technology,
 RETURN (
   SELECT * FROM vector_search(
     index => 'brickbot2026.rainfocus.sessions_index',
+    query_text => query,
+    query_type => 'HYBRID',
+    num_results => 10
+  )
+);
+
+CREATE OR REPLACE FUNCTION brickbot2026.tools.search_speakers(
+  query STRING COMMENT 'Search query — speaker names, companies, topics, or keywords'
+)
+RETURNS TABLE
+LANGUAGE SQL
+COMMENT 'Search for DAIS 2026 speakers by name, company, bio, or session topics. Returns the most relevant speakers using hybrid BM25 + semantic search.'
+RETURN (
+  SELECT * FROM vector_search(
+    index => 'brickbot2026.rainfocus.speakers_index',
     query_text => query,
     query_type => 'HYBRID',
     num_results => 10
