@@ -76,6 +76,11 @@ SUPERVISOR_ENDPOINT_NAME = os.environ.get(
 
 _workspace_client = WorkspaceClient()
 _databricks_host = _workspace_client.config.host.rstrip("/")
+USE_APP_AUTH_ONLY = os.environ.get("BRICKBOT_USE_APP_AUTH_ONLY", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 mlflow.openai.autolog()
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
@@ -139,6 +144,8 @@ def serialize_response_value(value: Any) -> Any:
 
 
 def get_forwarded_workspace_client() -> WorkspaceClient | None:
+    if USE_APP_AUTH_ONLY:
+        return None
     forwarded_token = (get_request_headers() or {}).get("x-forwarded-access-token")
     if not forwarded_token:
         return None
@@ -147,23 +154,14 @@ def get_forwarded_workspace_client() -> WorkspaceClient | None:
 
 def get_auth_headers() -> dict[str, str]:
     """
-    Prefer the forwarded user token inside Databricks Apps so the Supervisor can
-    enforce end-user permissions. Fall back to app auth / local CLI auth.
+    Use app credentials for serving queries unless explicitly configured to
+    prefer forwarded end-user auth.
     """
+    if USE_APP_AUTH_ONLY:
+        return _workspace_client.config.authenticate()
     forwarded_token = (get_request_headers() or {}).get("x-forwarded-access-token")
     if forwarded_token:
         return {"Authorization": f"Bearer {forwarded_token}"}
-    return _workspace_client.config.authenticate()
-
-
-def get_fallback_auth_headers() -> dict[str, str] | None:
-    """
-    When the forwarded Databricks Apps user token lacks the right API scopes for
-    model serving, retry with the app service principal credentials.
-    """
-    forwarded_token = (get_request_headers() or {}).get("x-forwarded-access-token")
-    if not forwarded_token:
-        return None
     return _workspace_client.config.authenticate()
 
 
