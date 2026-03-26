@@ -18,7 +18,7 @@ env:
   - name: BRICKBOT_BOOTSTRAP_KA
     value: "true"
   - name: KA_NAME
-    value: "brickbot-knowledge-assistant-agent-bricks"
+    value: "brickbot-knowledge-assistant-agent-bricks-bootstrap"
   - name: KA_CONTENT_VOLUME_PATH
     value: "/Volumes/brickbot2026/content/faq"
   - name: API_PROXY
